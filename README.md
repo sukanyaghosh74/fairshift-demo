@@ -1,4 +1,4 @@
-# FairShift — AI Manager Microdemo 🧠🍽️
+# FairShift: AI Manager Microdemo 🧠🍽️
 
 FairShift is a microdemo for an AI-powered shift reallocation tool tailored to the hospitality industry. It demonstrates real-time, fairness-based shift assignment when an employee calls out unexpectedly.
 
@@ -92,8 +92,6 @@ This demo was designed as a **proof-of-concept for Bespoke**, an AI Manager plat
 ## 🙋‍♀️ Author
 
 Made with 🩷 by [Sukanya Ghosh](https://github.com/sukanyaghosh74)
-
-[View the repository](https://github.com/sukanyaghosh74/fairshift-demo)
 
 ---
 
