@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>ai.timefold.solver</groupId>
+    <artifactId>timefold-solver-build-parent</artifactId>
+    <version>1.23.0</version>
+    <relativePath/>
+  </parent>
+  <!-- IMPORTANT: the individual quickstarts have no parent pom. -->
+
+  <artifactId>timefold-solver-quickstarts-parent</artifactId>
+  <packaging>pom</packaging>
+  <name>Timefold Solver Quickstarts</name>
+
+  <properties>
+    <enforcer.failOnDuplicatedClasses>false</enforcer.failOnDuplicatedClasses> <!-- Quarkus. -->
+  </properties>
+
+  <modules>
+    <module>java/hello-world</module>
+    <module>java/school-timetabling</module>
+    <module>java/facility-location</module>
+    <module>java/maintenance-scheduling</module>
+    <module>java/vehicle-routing</module>
+    <module>java/order-picking</module>
+    <module>java/employee-scheduling</module>
+    <module>java/food-packaging</module>
+    <module>java/conference-scheduling</module>
+    <module>java/bed-allocation</module>
+    <module>java/flight-crew-scheduling</module>
+    <module>java/meeting-scheduling</module>
+    <module>java/sports-league-scheduling</module>
+    <module>java/task-assigning</module>
+    <module>java/project-job-scheduling</module>
+    <module>java/tournament-scheduling</module>
+    <module>java/spring-boot-integration</module>
+    <module>kotlin/school-timetabling</module>
+  </modules>
+
+</project>

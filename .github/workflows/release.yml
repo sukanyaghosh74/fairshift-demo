@@ -1,0 +1,147 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      javaVersion:
+        description: 'Community Edition version (e.g. 1.0.0)'
+        required: true
+      pythonVersionSuffix:
+        description: 'What suffix to append to the Python version (ex: b0 for beta release)'
+        required: true
+        default: b0
+      developmentBranch:
+        description: 'Development branch to cut the release from'
+        default: development
+        required: true
+      stableBranch:
+        description: 'Stable branch to merge the development branch into'
+        default: stable
+        required: true
+jobs:
+  build:
+    env:
+      MAVEN_ARGS: "--no-transfer-progress --batch-mode"
+      RELEASE_BRANCH_NAME: "release_branch_${{ github.event.inputs.javaVersion }}"
+    runs-on: self-hosted
+    steps:
+      - name: Checkout timefold-quickstarts
+        uses: actions/checkout@v4
+        with:
+          repository: TimefoldAI/timefold-quickstarts
+          path: ./timefold-quickstarts
+          ref: ${{ github.event.inputs.developmentBranch }}
+          fetch-depth: 0 # Otherwise merge will fail on account of not having history.
+
+      - name: Checkout timefold-solver
+        uses: actions/checkout@v4
+        with:
+          repository: TimefoldAI/timefold-solver
+          path: ./timefold-solver
+          fetch-depth: 0
+          ref: v${{ github.event.inputs.javaVersion }}
+
+      - name: Delete release branch (if exists)
+        continue-on-error: true
+        run: git push -d origin $RELEASE_BRANCH_NAME
+
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@d6af6abeda15e98926a57b5aa970a96bb37f97d1 # v5
+        with:
+          maven-version: 3.9.3
+
+      - name: Python 3.12 Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Pip and build
+        working-directory: ./timefold-solver
+        run: |
+          mvn -Dfull versions:set -DnewVersion=${{ github.event.inputs.javaVersion }}
+          sed -i "s/^timefold_solver_python_version.*=.*/timefold_solver_python_version = '${{ github.event.inputs.javaVersion }}${{ github.event.inputs.pythonVersionSuffix }}'/" setup.py
+          python -m pip install --upgrade pip
+          pip install build
+          python -m build
+
+      - name: Update version
+        working-directory: ./timefold-quickstarts
+        run: |
+          git config user.name "Timefold Release Bot"
+          git config user.email "release@timefold.ai"
+          git checkout -B $RELEASE_BRANCH_NAME
+          export OLD_JAVA_VERSION="$(find . -name pom.xml -exec grep '<version.ai.timefold.solver>' {} \;|tail -n 1|cut -d\> -f1 --complement|cut -d\< -f1)"
+          export NEW_JAVA_VERSION="${{ github.event.inputs.javaVersion }}"
+          export OLD_PYTHON_VERSION="$(find . -name pyproject.toml -exec grep 'timefold ==' {} \;|tail -n 1|cut -d\' -f1 --complement|cut -d\= -f3|cut -d\' -f1|xargs)"
+          export NEW_PYTHON_VERSION="${{ github.event.inputs.javaVersion }}${{ github.event.inputs.pythonVersionSuffix }}"
+          .github/scripts/change_versions.sh
+
+      - name: Build and test Python
+        working-directory: ./timefold-quickstarts
+        env:
+          TIMEFOLD_SOLVER_PYTHON_DIST: "${{ github.workspace }}/timefold-solver/dist"
+        run: .github/scripts/run_python_tests.sh
+
+      # This step will fail if the Solver binaries aren't already on Maven Central.
+      - name: Create release branch and build release
+        working-directory: ./timefold-quickstarts
+        run: |
+          mvn verify
+          git commit -am "build: switch to version ${{ github.event.inputs.javaVersion }}"
+          git tag -a "v${{ github.event.inputs.javaVersion }}" -m "Release version ${{ github.event.inputs.javaVersion }}"
+          git push --tags
+
+      # Merge the release branch into the stable branch.
+      # While merging, resolve conflicts by using everything from the release branch.
+      # (Stable branch becomes the same as the release branch.)
+      - name: Merge release branch into stable and prepare PR
+        working-directory: ./timefold-quickstarts
+        env:
+          GITHUB_TOKEN: ${{ secrets.JRELEASER_GITHUB_TOKEN }}
+        run: |
+          git checkout ${{ github.event.inputs.stableBranch }}
+          git checkout -B $RELEASE_BRANCH_NAME-bump
+          git checkout $RELEASE_BRANCH_NAME
+          git merge -s ours --no-edit ${{ github.event.inputs.stableBranch }}
+          git checkout $RELEASE_BRANCH_NAME-bump
+          git merge --squash $RELEASE_BRANCH_NAME
+          git commit -m "build: release version ${{ github.event.inputs.javaVersion }}"
+          git push origin $RELEASE_BRANCH_NAME-bump
+          gh pr create --reviewer triceo --base ${{ github.event.inputs.stableBranch }} --head $RELEASE_BRANCH_NAME-bump --title "build: release version ${{ github.event.inputs.javaVersion }}" --body-file .github/workflows/release-pr-body.md
+
+      - name: Put back the 999-SNAPSHOT version on the release branch
+        working-directory: ./timefold-quickstarts
+        run: |
+          git checkout $RELEASE_BRANCH_NAME
+          export OLD_JAVA_VERSION="$(find . -name pom.xml -exec grep '<version.ai.timefold.solver>' {} \;|tail -n 1|cut -d\> -f1 --complement|cut -d\< -f1)"
+          export NEW_JAVA_VERSION="999-SNAPSHOT"
+          export OLD_PYTHON_VERSION="$(find . -name pyproject.toml -exec grep 'timefold ==' {} \;|tail -n 1|cut -d\' -f1 --complement|cut -d\= -f3|cut -d\' -f1|xargs)"
+          export NEW_PYTHON_VERSION="999-dev0"
+          .github/scripts/change_versions.sh
+          git commit -am "build: move back to version $NEW_VERSION"
+          git push origin $RELEASE_BRANCH_NAME
+
+      - name: Delete version branch (if exists)
+        continue-on-error: true
+        run: |
+          java_version=${{ github.event.inputs.javaVersion }}
+          version="${java_version%.*}.x"
+          git push -d origin $version  
+
+      - name: Update release branch
+        working-directory: ./timefold-quickstarts
+        shell: bash
+        run: |
+          java_version=${{ github.event.inputs.javaVersion }}
+          version="${java_version%.*}.x"
+          git config user.name "Timefold Release Bot"
+          git config user.email "release@timefold.ai"
+          git checkout $RELEASE_BRANCH_NAME
+          git branch -m $RELEASE_BRANCH_NAME $version
+          git push origin -u $version
+          git push -d origin $RELEASE_BRANCH_NAME
